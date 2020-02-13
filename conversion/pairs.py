@@ -12,6 +12,8 @@ import spacy
 from tqdm import tqdm
 import numpy as np
 
+import scispacy
+
 
 @dataclass
 class Annotation:
@@ -241,15 +243,8 @@ class PairGetter:
 
         for e1_mention in e1_mentions:
             for e2_mention in e2_mentions:
-                e1_span = get_span(e1_mention.start, e1_mention.end, token_starts)
-                e2_span = get_span(e2_mention.start, e2_mention.end, token_starts)
-                if e1_span[0] < e2_span[0]:
-                    left_span = e1_span
-                    right_span = e2_span
-                else:
-                    left_span = e2_span
-                    right_span = e1_span
+                dist = abs(e1_mention.start - e2_mention.start)
 
-                min_distance = min(min_distance, right_span[1] - left_span[0])
+                min_distance = min(min_distance, dist)
 
         return min_distance

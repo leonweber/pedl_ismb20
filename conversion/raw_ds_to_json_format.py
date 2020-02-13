@@ -1,4 +1,7 @@
 import itertools
+import os
+from pathlib import Path
+
 import numpy as np
 from tqdm import tqdm
 import argparse
@@ -15,18 +18,18 @@ def get_sup_type(line):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--pmc', required=True)
+    parser.add_argument('--raw', required=True, type=Path, nargs='+')
     parser.add_argument('--data', required=True)
     parser.add_argument('--subsample', type=float, default="1.0")
-    parser.add_argument('--out', required=True)
+    parser.add_argument('--out', required=True, type=Path)
     args = parser.parse_args()
 
 
-    files = []
+    os.makedirs(args.out.parent, exist_ok=True)
+
     with open(args.data) as f:
         data = json.load(f)
-    if args.pmc:
-        files.append(open(args.pmc))
+        files = [f.open() for f in args.raw]
 
     result = {}
     for triple in data:
@@ -66,5 +69,5 @@ if __name__ == '__main__':
             json_compat_result[pair]['mentions'] = sampled_mentions.tolist()
             json_compat_result[pair]['relations'] = list(result[pair]['relations'])
         
-        json.dump(json_compat_result, f)
+        json.dump(json_compat_result, f, indent=2)
 

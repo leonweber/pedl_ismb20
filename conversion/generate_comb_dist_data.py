@@ -86,7 +86,7 @@ def write_examples(getter: PairGetter, offset_lines, fname, train_pairs, dev_pai
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('input')
-    parser.add_argument('--pmc_dir', default=Path('pmc_bioc'), type=Path)
+    parser.add_argument('--pmc_dir', default=Path('data/pmc_bioc'), type=Path)
     parser.add_argument('--worker', default='0', type=int)
     parser.add_argument('--n_workers', default='1', type=int)
     parser.add_argument('--test', action='store_true')
@@ -166,7 +166,7 @@ if __name__ == '__main__':
                                                   test=args.test, worker=args.worker, n_workers=args.n_workers,
                                                   relevant_pmids=getter.relevant_pmids)
 
-        dataset_dir = Path("data") / (str(args.input) + "_raw")
+        dataset_dir = Path(str(args.input) + "_raw")
         os.makedirs(dataset_dir, exist_ok=True)
 
         suffix = f".{args.worker}.{args.species}"

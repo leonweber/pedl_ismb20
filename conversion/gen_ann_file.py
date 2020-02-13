@@ -10,15 +10,11 @@ import time
 import numpy as np
 
 import mmh3
-import requests
-import requests_cache
-requests_cache.install_cache('pubtator_central_cache')
 
 from tqdm import tqdm
 
 import logging
 
-from greek_alphabet import greek_alphabet
 
 
 ANN_LINE_ESTIMATE = 1118483040
@@ -76,112 +72,6 @@ def load_annotations(lines):
         
     return anns
 
-
-class PubtatorCentralQueryManager:
-    base_url = "https://www.ncbi.nlm.nih.gov/research/pubtator-api/publications/export/biocjson"
-
-    def __init__(self, pmid_to_pmcid, query_size=1000, min_delay=2, types=None):
-        self.last_query_time = time.time()
-        self._query_buffer = {}
-        self.query_size = query_size
-        self.min_delay = min_delay
-        self._pmid_to_pmcid = pmid_to_pmcid
-        self.types = types
-        self._pmid_line_buffer = defaultdict(list)
-        self._successful_pmids = set()
-
-    def _add_query(self, pmid, pmcid):
-        self._query_buffer[pmcid] = pmid
-
-    def _query(self):
-        time_to_wait = self.min_delay - abs(time.time() - self.last_query_time)
-        if time_to_wait > 0:
-            time.sleep(time_to_wait)
-
-        params = {"pmcids": list(self._query_buffer)}
-        response = requests.post(self.base_url, json=params)
-        results = {}
-        for line in response.content.splitlines():
-            try:
-                result = json.loads(line)
-            except json.JSONDecodeError:
-                logging.error(f"Could not decode JSON: {line}")
-                continue
-            pmcid = "PMC" + result["id"]
-            results[self._query_buffer[pmcid]] = result
-
-        self._query_buffer = {}
-
-        return results
-
-    def bioc_json_to_pubtator(self, bioc_json, pmid):
-        texts = []
-        annotations = []
-        for passage in bioc_json["passages"]:
-            if texts:
-                text_offset = len(' '.join(texts)) + 1
-            else:
-                text_offset = 0
-            texts.append(passage["text"].strip())
-            for annotation in passage["annotations"]:
-                type_ = annotation['infons']['type']
-                id_ = annotation['infons']['identifier']
-                text = annotation['text']
-                for location in annotation['locations']:
-                    start = location['offset'] - passage['offset'] + text_offset
-                    end = start + location['length']
-                    annotations.append(f"{pmid}\t{start}\t{end}\t{text}\t{type_}\t{id_}")
-
-        lines = []
-        for i, text in enumerate(texts):
-            if i == 0:
-                line_type = 't'
-            elif i == 1:
-                line_type = 'a'
-            else:
-                line_type = 's'
-            lines.append(f"{pmid}|{line_type}|{text}")
-
-        lines += annotations
-
-        if len(lines) > 2:
-            self._successful_pmids.add(pmid)
-
-        return lines
-
-    def add_to_pmid_line_buffer(self, pmid, line):
-        self._pmid_line_buffer[pmid].append(line)
-
-    def flush_pmid_line_buffer(self):
-        for pmid in self._pmid_line_buffer:
-            if pmid not in self._successful_pmids:
-                for line in self._pmid_line_buffer[pmid]:
-                    yield line
-        self._pmid_line_buffer = defaultdict(list)
-        self._successful_pmids = set()
-
-    def pmid_to_pmcid(self, pmid):
-        return self._pmid_to_pmcid.get(pmid, None)
-
-    def maybe_get_pmcid_lines(self, pmid):
-        pmcid = self.pmid_to_pmcid(pmid)
-        assert pmcid
-
-        self._add_query(pmid=pmid, pmcid=pmcid)
-        if len(self._query_buffer) < self.query_size:
-            return []
-
-        return self.flush_pmcid_lines()
-
-
-    def flush_pmcid_lines(self):
-        query_results = self._query()
-
-        pubtator_lines = []
-        for pmid_, bioc_json in query_results.items():
-            pubtator_lines += self.bioc_json_to_pubtator(bioc_json, pmid=pmid_)
-
-        return pubtator_lines
 
 
 def _is_supported_passage_type(passage_type):
@@ -337,27 +227,17 @@ def augment_offset_lines(line, types, mapping, homolog_mapping):
         if len(fields) != 6:
             return
         pmid, start, end, mention, type_, id_ = fields
-        if types and type_ not in types:
+        if type_ != 'Gene':
             return
 
-        if type_ in mapping:
-            if id_ in mapping[type_]:
-                ids = mapping[type_][id_]
-            else:
-                ids = []
-        else:
-            ids = [id_]
+        mapping = mapping['Gene']
 
-        for id_ in ids:
-            if type_ == 'Gene':
-                yield '\t'.join([pmid, start, end, mention, type_, id_])
-
-                for human_gene_id in homolog_mapping[id_]:
-                    if id_ != human_gene_id:
-                        yield '\t'.join([pmid, start, end, mention, type_, id_])
-
-            else:
-                yield '\t'.join([pmid, start, end, mention, type_, id_])
+        extended_genes = set(mapping.get(id_, []))
+        for homologue in homolog_mapping[id_]:
+            extended_genes.update(mapping.get(homologue, []))
+        
+        for gene in extended_genes:
+            yield '\t'.join([pmid, start, end, mention, type_, gene])
 
 
 def get_augmented_offset_lines(lines, pmc_dir, types=None, test=False, homologue_species=None, mapping=None, worker=0, n_workers=1,
@@ -370,7 +250,7 @@ def get_augmented_offset_lines(lines, pmc_dir, types=None, test=False, homologue
     mapping = mapping or {}
     pmid_to_pmcid = {}
     pmc_manager = LocalPMCManager(pmc_dir)
-    with open('PMC-ids.csv') as f:
+    with open('data/PMC-ids.csv') as f:
         next(f)
         for fields in csv.reader(f):
             pmid_to_pmcid[fields[9]] = fields[8]
@@ -382,7 +262,7 @@ def get_augmented_offset_lines(lines, pmc_dir, types=None, test=False, homologue
         line = line.strip()
         if not line:
             continue
-        if test and lino > ANN_LINE_ESTIMATE//100:
+        if test and lino > ANN_LINE_ESTIMATE//1000:
             break
 
         pmid = "".join(itertools.takewhile(lambda x: x not in {'\t', '|'}, line))
