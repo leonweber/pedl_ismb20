@@ -1,6 +1,6 @@
 # PEDL
 
-PEDL is a state-of-the-art method for predicting protein-protein assocations from text. The paper describing it is currently undergoing review.
+PEDL is a method for predicting protein-protein assocations from text. The paper describing it will be presented at ISMB 2020.
 
 ## Requirements
 * `python >= 3.6`
