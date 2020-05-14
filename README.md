@@ -19,7 +19,7 @@ All experiments in the paper have been performed with the masked version of the 
 Generating the PID data is a bit more involved:
 
 1. First, we have to download the raw PubMed Central texts: `python download_pmc.py`. CAUTION: This produces over 200 GB of files and spawns multiple processes.
-2. Then, we have to download the [PubTator Central file](ftp://ftp.ncbi.nlm.nih.gov/pub/lu/PubTatorCentral/bioconcepts2pubtatorcentral.offset.gz) and place it into the root directory. This file consumes another 80 GB when decompressed.
+2. Then, we have to download the PubTator Central file (ftp://ftp.ncbi.nlm.nih.gov/pub/lu/PubTatorCentral/bioconcepts2pubtatorcentral.offset.gz) and place it into the root directory. This file consumes another 80 GB when decompressed.
 3. Generate the raw PID data: `./conversion/generate_raw_pid.sh`
 4. Generate the final PID data: `./conversion_make_pid.sh`
 
